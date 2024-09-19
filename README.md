@@ -1,0 +1,2 @@
+# Sentiment-Driven-Stock-Market-Signals-Predicting-Buy-Sell-Decisions-Using-Financial-News-Analysis
+Developed a machine learning model to predict Buy, Hold, or Sell signals by analyzing financial news sentiment. Utilized NewsAPI for data extraction, Vader for sentiment scoring, and Random Forest Classifier for stock market prediction. Integrated features such as sentiment scores, price change, and moving averages to optimize decision-making.
