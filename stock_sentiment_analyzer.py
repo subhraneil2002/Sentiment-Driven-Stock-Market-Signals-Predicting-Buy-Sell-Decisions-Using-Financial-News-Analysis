@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 import requests
 import re
 
+
 class StockSentimentAnalyzer:
     def __init__(self, symbol):
         self.symbol = symbol.strip().upper()
@@ -52,9 +53,8 @@ class StockSentimentAnalyzer:
         def calculate_sortino_ratio(data, risk_free_rate=0.02):
             returns = data['Adj Close'].pct_change()
             negative_return = returns[returns < 0]
-            
-            # Only calculate if there are negative returns
-            if not negative_return.empty and negative_return.std() != 0:
+
+            if len(negative_return) > 0 and negative_return.std() != 0:
                 excess_return = returns.mean() - risk_free_rate / 252
                 return excess_return / negative_return.std() * np.sqrt(252)
             else:
@@ -136,7 +136,17 @@ class StockSentimentAnalyzer:
         else:
             return "Sell"
 
+
 # Streamlit App
+@st.cache_data
+def fetch_and_process_data(analyzer, start_date, end_date):
+    analyzer.get_news_data(from_date=start_date, to_date=end_date)
+    if not analyzer.get_stock_data(start_date=start_date, end_date=end_date):
+        st.error("Invalid ticker symbol. Please try again.")
+        return False
+    return True
+
+
 def main():
     st.title("Stock Sentiment Analyzer")
 
@@ -156,37 +166,40 @@ def main():
         start_date = end_date - timedelta(days=365)
 
         # Fetch news and stock data
-        analyzer.get_news_data(from_date=start_date, to_date=end_date)
-        if not analyzer.get_stock_data(start_date=start_date, end_date=end_date):
-            st.error("Invalid ticker symbol. Please try again.")
-            return
+        if fetch_and_process_data(analyzer, start_date, end_date):
+            # Calculate performance metrics
+            metrics = analyzer.calculate_metrics()
 
-        # Calculate performance metrics
-        metrics = analyzer.calculate_metrics()
+            # Preprocess and analyze sentiment
+            analyzer.preprocess_and_merge_data()
 
-        # Preprocess and analyze sentiment
-        analyzer.preprocess_and_merge_data()
-        analyzer.analyze_sentiment()
-        analyzer.feature_engineering()
-        analyzer.classify_sentiments()
+            # Check if merged DataFrame is empty
+            if analyzer.merged_df.empty:
+                st.error("No news articles found for the selected date range. Please try another symbol.")
+                return
 
-        # Train the model
-        accuracy = analyzer.train_model()
+            analyzer.analyze_sentiment()
+            analyzer.feature_engineering()
+            analyzer.classify_sentiments()
 
-        # Display results
-        st.subheader("Performance Metrics")
-        for key, value in metrics.items():
-            st.write(f"{key}: {value:.2f}%" if key in ['CAGR', 'Max Drawdown'] else f"{key}: {value:.2f}")
+            # Train the model
+            accuracy = analyzer.train_model()
 
-        st.subheader("Model Accuracy")
-        st.write("Accuracy:", accuracy)
+            # Display results
+            st.subheader("Performance Metrics")
+            for key, value in metrics.items():
+                st.write(f"{key}: {value:.2f}%" if key in ['CAGR', 'Max Drawdown'] else f"{key}: {value:.2f}")
 
-        # Final decision with summary
-        decision = analyzer.final_decision()
-        sentiment_summary = f"The overall sentiment for {symbol} is {decision.lower()}, with recent trends indicating a likely {decision} recommendation."
+            st.subheader("Model Accuracy")
+            st.write("Accuracy:", accuracy)
 
-        st.subheader("Final Decision")
-        st.write(sentiment_summary)
+            # Final decision with summary
+            decision = analyzer.final_decision()
+            sentiment_summary = f"The overall sentiment for {symbol} is {decision.lower()}, with recent trends indicating a likely {decision} recommendation."
+
+            st.subheader("Final Decision")
+            st.write(sentiment_summary)
+
 
 if __name__ == "__main__":
     main()
