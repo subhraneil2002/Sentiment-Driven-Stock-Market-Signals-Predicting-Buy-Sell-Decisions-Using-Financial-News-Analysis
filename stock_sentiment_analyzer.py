@@ -1,9 +1,3 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# In[ ]:
-
-
 import streamlit as st
 import yfinance as yf
 import pandas as pd
@@ -11,15 +5,15 @@ import numpy as np
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import classification_report, accuracy_score
+from sklearn.metrics import accuracy_score
 from datetime import datetime, timedelta
 import requests
 import re
 
 class StockSentimentAnalyzer:
-    def __init__(self, symbol, api_key):
+    def __init__(self, symbol):
         self.symbol = symbol.strip().upper()
-        self.api_key = api_key
+        self.api_key = "cse9gdhr01qs1ihohca0cse9gdhr01qs1ihohcag"  # Using provided API key
         self.news_df = pd.DataFrame()
         self.stock_data = pd.DataFrame()
         self.merged_df = pd.DataFrame()
@@ -28,14 +22,14 @@ class StockSentimentAnalyzer:
         url = f'https://finnhub.io/api/v1/company-news?symbol={self.symbol}&from={from_date}&to={to_date}&token={self.api_key}'
         response = requests.get(url)
         articles = response.json()
-        
+
         news_data = []
         for article in articles:
             title = article.get('headline', '')
             description = article.get('summary', '')
             published_at = datetime.fromtimestamp(article['datetime']).strftime('%Y-%m-%d %H:%M:%S')
             news_data.append((published_at, title + ' ' + description))
-        
+
         self.news_df = pd.DataFrame(news_data, columns=['Date', 'News'])
 
     def get_stock_data(self, start_date, end_date):
@@ -90,7 +84,8 @@ class StockSentimentAnalyzer:
 
     def analyze_sentiment(self):
         analyzer = SentimentIntensityAnalyzer()
-        self.merged_df['sentiment_score'] = self.merged_df['News'].apply(lambda text: analyzer.polarity_scores(text)['compound'])
+        self.merged_df['sentiment_score'] = self.merged_df['News'].apply(
+            lambda text: analyzer.polarity_scores(text)['compound'])
 
     def feature_engineering(self):
         self.merged_df['Price_MA'] = self.merged_df['Close'].rolling(window=5).mean()
@@ -108,27 +103,27 @@ class StockSentimentAnalyzer:
             else:
                 return 'Neutral', 0
 
-        self.merged_df['Sentiment_Label'], self.merged_df['Signal'] = zip(*self.merged_df['sentiment_score'].apply(classify_sentiment_and_signal))
+        self.merged_df['Sentiment_Label'], self.merged_df['Signal'] = zip(
+            *self.merged_df['sentiment_score'].apply(classify_sentiment_and_signal))
 
     def train_model(self):
         X = self.merged_df[['sentiment_score', 'Price_Change', 'Sentiment_MA_5', 'Sentiment_MA_10']]
         y = self.merged_df['Signal']
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
-        
+
         model = LogisticRegression()
         model.fit(X_train, y_train)
         y_pred = model.predict(X_test)
-        
+
         accuracy = accuracy_score(y_test, y_pred)
-        report = classification_report(y_test, y_pred)
-        
-        return {"Accuracy": f"{np.round(accuracy * 100, 2)}%", "Report": report}
+
+        return f"{np.round(accuracy * 100, 2)}%"
 
     def final_decision(self):
         positive_count = (self.merged_df['Signal'] == 1).sum()
         neutral_count = (self.merged_df['Sentiment_Label'] == 'Neutral').sum()
         negative_count = (self.merged_df['Signal'] == -1).sum()
-        
+
         if positive_count > max(neutral_count, negative_count):
             return "Buy"
         elif neutral_count > max(positive_count, negative_count):
@@ -139,17 +134,19 @@ class StockSentimentAnalyzer:
 # Streamlit App
 def main():
     st.title("Stock Sentiment Analyzer")
-    
-    api_key = st.text_input("Enter your Finnhub API key:", type="password")
+
+    # Only input for stock symbol
     symbol = st.text_input("Enter the stock ticker symbol:", value='AAPL').strip().upper()
 
     if st.button("Analyze"):
-        if not api_key or not symbol:
-            st.error("Please enter both a valid API key and a stock ticker symbol.")
+        if not symbol:
+            st.error("Please enter a stock ticker symbol.")
             return
-        
-        analyzer = StockSentimentAnalyzer(symbol, api_key)
 
+        # Initialize analyzer with stock symbol only
+        analyzer = StockSentimentAnalyzer(symbol)
+
+        # Define date range for data collection
         end_date = datetime.now().date()
         start_date = end_date - timedelta(days=365)
 
@@ -162,29 +159,29 @@ def main():
         # Calculate performance metrics
         metrics = analyzer.calculate_metrics()
 
-        # Preprocess data
+        # Preprocess and analyze sentiment
         analyzer.preprocess_and_merge_data()
         analyzer.analyze_sentiment()
         analyzer.feature_engineering()
         analyzer.classify_sentiments()
 
         # Train the model
-        model_results = analyzer.train_model()
+        accuracy = analyzer.train_model()
 
         # Display results
         st.subheader("Performance Metrics")
         for key, value in metrics.items():
             st.write(f"{key}: {value:.2f}%" if key in ['CAGR', 'Max Drawdown'] else f"{key}: {value:.2f}")
 
-        st.subheader("Model Results")
-        st.write("Accuracy:", model_results["Accuracy"])
-        st.write("Classification Report:\n", model_results["Report"])
+        st.subheader("Model Accuracy")
+        st.write("Accuracy:", accuracy)
 
-        # Final decision
+        # Final decision with summary
         decision = analyzer.final_decision()
+        sentiment_summary = f"The overall sentiment for {symbol} is {decision.lower()}, with recent trends indicating a likely {decision} recommendation."
+
         st.subheader("Final Decision")
-        st.write(decision)
+        st.write(sentiment_summary)
 
 if __name__ == "__main__":
     main()
-
