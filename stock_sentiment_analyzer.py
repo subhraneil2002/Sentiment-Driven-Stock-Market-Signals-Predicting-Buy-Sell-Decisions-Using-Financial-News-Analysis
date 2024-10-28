@@ -52,8 +52,13 @@ class StockSentimentAnalyzer:
         def calculate_sortino_ratio(data, risk_free_rate=0.02):
             returns = data['Adj Close'].pct_change()
             negative_return = returns[returns < 0]
-            excess_return = returns.mean() - risk_free_rate / 252
-            return excess_return / negative_return.std() * np.sqrt(252) if negative_return.std() != 0 else np.nan
+            
+            # Only calculate if there are negative returns
+            if not negative_return.empty and negative_return.std() != 0:
+                excess_return = returns.mean() - risk_free_rate / 252
+                return excess_return / negative_return.std() * np.sqrt(252)
+            else:
+                return np.nan
 
         def calculate_max_drawdown(data):
             cumulative_return = (1 + data['Adj Close'].pct_change()).cumprod()
